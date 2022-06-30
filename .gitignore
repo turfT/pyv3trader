@@ -1,0 +1,7 @@
+.idea
+phonic-heaven-351302-2ea0a5de7eb3.json
+merge_data.csv
+pytradertest.py
+*.pyc
+.DS_Store
+config.py
