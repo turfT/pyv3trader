@@ -5,3 +5,4 @@ pytradertest.py
 *.pyc
 .DS_Store
 config.py
+toys
