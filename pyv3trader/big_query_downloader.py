@@ -12,17 +12,19 @@ from enum import Enum
 from pyv3trader.utils.consant import MINT_KECCAK, BURN_KECCAK, SWAP_KECCAK
 
 
-def download_bigquery_pool_event_matic(contract_address,date_begin:datetime,date_end:datetime,data_save_path:os.path):
-    #iter date=> call download one day => save to date by date.
+def download_bigquery_pool_event_matic(contract_address: str, date_begin: datetime, date_end: datetime,
+                                       data_save_path: os.path):
+    # iter date=> call download one day => save to date by date.
+    contract_address = contract_address.lower()
     date_generated = [date_begin + timedelta(days=x) for x in range(0, (date_end - date_begin).days)]
     for one_day in date_generated:
-        df = download_bigquery_pool_event_matic_oneday(contract_address,one_day)
+        df = download_bigquery_pool_event_matic_oneday(contract_address, one_day)
         date_str = one_day.strftime("%Y-%m-%d")
         file_name = f"{contract_address}-{date_str}.csv"
-        df.to_csv(data_save_path+"//"+file_name,header=True,index=False)
+        df.to_csv(data_save_path + "//" + file_name, header=True, index=False)
 
 
-def download_bigquery_pool_event_matic_oneday(contract_address,one_date):
+def download_bigquery_pool_event_matic_oneday(contract_address, one_date):
     from google.cloud import bigquery
     client = bigquery.Client()
 
@@ -44,8 +46,7 @@ def download_bigquery_pool_event_matic_oneday(contract_address,one_date):
             AND DATE(block_timestamp) >=  DATE("{one_date}")
             AND DATE(block_timestamp) <=  DATE("{one_date}")
             AND address = "{contract_address}"  order by block_number asc"""
-    print(query);
+    # print(query);
     query_job = client.query(query)  # Make an API request.
     result = query_job.to_dataframe(create_bqstorage_client=False)
     return result
-
