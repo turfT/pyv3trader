@@ -90,8 +90,11 @@ def handle_event(topics_str, data_hex):
 
     return tx_type.name, sender, receipt, amount0, amount1, sqrtPriceX96, current_liquidity, current_tick, tick_lower, tick_upper, delta_liquidity
 
+
 def handle_tick(lower_tick,upper_tick,current_tick,delta):
-    if (lower_tick<current_tick and upper_tick>current_tick):
+    if lower_tick is None or upper_tick is None or current_tick is None:
+        return 0
+    if lower_tick < current_tick < upper_tick:
         return delta
     else :
         return 0
@@ -116,7 +119,7 @@ def preprocess_one(df):
     df[["sqrtPriceX96", "current_liquidity", "current_tick"]] = df[
         ["sqrtPriceX96", "current_liquidity", "current_tick"]].fillna(method="ffill")
     df["delta_liquidity"] = df["delta_liquidity"].fillna(0)
-    df["delta_liquidity"] = df.apply(lambda x: handle_tick(x.tick_lower,x.tick_upper,x.current_tick,x.delta_liquidity))
+    df["delta_liquidity"] = df.apply(lambda x: handle_tick(x.tick_lower,x.tick_upper,x.current_tick,x.delta_liquidity), axis=1)
     df["current_liquidity"] = df["current_liquidity"] + df["delta_liquidity"]
     df["block_timestamp"] = df["block_timestamp"].apply(lambda x: x.split("+")[0])
     return df
