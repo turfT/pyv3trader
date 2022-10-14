@@ -1,15 +1,7 @@
-import pandas as pd
 from datetime import datetime, timedelta
-import requests
-import pickle
-import importlib
-from itertools import compress
-import time
 import os
-import math
-from enum import Enum
 import time
-from pyv3trader.utils.consant import MINT_KECCAK, BURN_KECCAK, SWAP_KECCAK
+import pyv3trader.utils.consant as constant
 
 
 def download_bigquery_pool_event_matic(contract_address: str, date_begin: datetime, date_end: datetime,
@@ -30,26 +22,24 @@ def download_bigquery_pool_event_matic(contract_address: str, date_begin: dateti
 def download_bigquery_pool_event_matic_oneday(contract_address, one_date):
     from google.cloud import bigquery
     client = bigquery.Client()
-
-    query = f"""SELECT
-        block_number,
-        transaction_hash,
-        block_timestamp,
-        transaction_index,
-        log_index,
-        topics,
-        DATA
-
-        FROM
+    query = f"""
+select pool.block_number, pool.transaction_hash, pool.block_timestamp, pool.topics as pool_topics, 
+pool.DATA as pool_data,  proxy.topics as proxy_topics,
+pool.transaction_index as pool_tx_index, pool.log_index as pool_log_index from
+(SELECT block_number,transaction_hash,block_timestamp,transaction_index,log_index,topics,DATA FROM
         public-data-finance.crypto_polygon.logs
-        WHERE
-            (topics[SAFE_OFFSET(0)] = '{MINT_KECCAK}'
-            OR topics[SAFE_OFFSET(0)] = '{BURN_KECCAK}'
-            OR topics[SAFE_OFFSET(0)] = '{SWAP_KECCAK}')
+        WHERE topics[SAFE_OFFSET(0)] in ('{constant.MINT_KECCAK}','{constant.BURN_KECCAK}','{constant.SWAP_KECCAK}')
             AND DATE(block_timestamp) >=  DATE("{one_date}")
             AND DATE(block_timestamp) <=  DATE("{one_date}")
-            AND address = "{contract_address}"  order by block_number asc"""
-    # print(query);
+            AND address = "{contract_address}" ) as pool
+left join 
+(SELECT transaction_hash,topics FROM public-data-finance.crypto_polygon.logs
+        WHERE topics[SAFE_OFFSET(0)] in ('{constant.INCREASE_LIQUIDITY}','{constant.DECREASE_LIQUIDITY}')
+            AND DATE(block_timestamp) >=  DATE("{one_date}")
+            AND DATE(block_timestamp) <=  DATE("{one_date}")
+            AND address = "{constant.PROXY_CONTRACT_ADDRESS}" ) as proxy
+on pool.transaction_hash=proxy.transaction_hash order by pool.block_number asc
+"""
     query_job = client.query(query)  # Make an API request.
     result = query_job.to_dataframe(create_bqstorage_client=False)
     return result
