@@ -122,7 +122,6 @@ def preprocess_one(df):
         "sqrtPriceX96", "current_liquidity", "current_tick", "tick_lower", "tick_upper", "delta_liquidity"]] = df.apply(
         lambda x: handle_event(x.pool_topics, x.pool_data), axis=1, result_type="expand")
     df["position_id"] = df.apply(lambda x: handle_proxy_event(x.proxy_topics), axis=1)
-    df["position_id"] = df["position_id"].astype("int32")
     df = df.drop(columns=["pool_topics", "pool_data", "proxy_topics"])
     df = df.sort_values(['block_number', 'pool_log_index'], ascending=[True, True])
     df[["sqrtPriceX96", "current_liquidity", "current_tick"]] = df[

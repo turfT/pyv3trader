@@ -16,7 +16,7 @@ def download_bigquery_pool_event_matic(contract_address: str, date_begin: dateti
         file_name = f"{contract_address}-{date_str}.csv"
         df.to_csv(data_save_path + "//" + file_name, header=True, index=False)
         time_end = time.time()
-        print('Day: {}, time cost {} s, data count: {}'.format(date_str, time_end - time_start, df.size))
+        print('Day: {}, time cost {} s, data count: {}'.format(date_str, time_end - time_start, len(df.index)))
 
 
 def download_bigquery_pool_event_matic_oneday(contract_address, one_date):
