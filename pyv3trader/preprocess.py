@@ -49,13 +49,21 @@ def handle_proxy_event(topic_str):
         return None
     topic_list = topic_str.strip("[]").replace("'", "").replace(" ", "").split("\n")
     type_topic = topic_list[0]
-    if len(topic_list) > 1 and (type_topic == constant.INCREASE_LIQUIDITY or type_topic == constant.DECREASE_LIQUIDITY):
+    if len(topic_list) > 1 and (
+            type_topic == constant.INCREASE_LIQUIDITY or type_topic == constant.DECREASE_LIQUIDITY or type_topic == constant.COLLECT):
         return int(topic_list[1], 16);
     else:
         return None
 
 
-def handle_event(topics_str, data_hex):
+def get_tx_type(topics_str):
+    topic_list = topics_str.strip("[]").replace("'", "").replace(" ", "").split("\n")
+    type_topic = topic_list[0]
+    tx_type = constant.type_dict[type_topic]
+    return tx_type
+
+
+def handle_event(tx_type, topics_str, data_hex):
     # proprocess topics string ->topic list
     # topics_str = topics.values[0]
     sqrtPriceX96 = receipt = amount1 = current_liquidity = current_tick = tick_lower = tick_upper = delta_liquidity = None
@@ -63,8 +71,6 @@ def handle_event(topics_str, data_hex):
 
     # data_hex = data.values[0]
 
-    type_topic = topic_list[0]
-    tx_type = constant.type_dict[type_topic]
     no_0x_data = data_hex[2:]
     chunk_size = 64
     chunks = len(no_0x_data)
@@ -93,11 +99,56 @@ def handle_event(topics_str, data_hex):
         sender = hex_to_address(split_data[0])
         delta_liquidity, amount0, amount1 = [signed_int(onedata) for onedata in split_data[1:]]
 
+    elif tx_type == constant.onchainTxType.COLLECT:
+        tick_lower = signed_int(topic_list[2])
+        tick_upper = signed_int(topic_list[3])
+        split_data = ["0x" + no_0x_data[i:i + chunk_size] for i in range(0, chunks, chunk_size)]
+        sender = hex_to_address(split_data[0])
+        amount0, amount1 = [signed_int(onedata) for onedata in split_data[1:]]
 
     else:
         raise ValueError("not support tx type")
 
-    return tx_type.name, sender, receipt, amount0, amount1, sqrtPriceX96, current_liquidity, current_tick, tick_lower, tick_upper, delta_liquidity
+    return sender, receipt, amount0, amount1, sqrtPriceX96, current_liquidity, current_tick, tick_lower, tick_upper, delta_liquidity
+
+
+def process_duplicate_row(index, row, row_to_remove, df_count, df):
+    if df_count.loc[row.key] > 1:
+        row_to_remove.append(index)
+    else:
+        df.loc[index, "proxy_topics"] = ""
+        pass
+
+
+def data_is_not_empty(data):
+    if isinstance(data, str) and data != "":
+        return True
+    return False
+
+
+def drop_duplicate(df: pd.Series):
+    """
+    由于sql用pool表join proxy表. 虽然用一个tx_hash做join条件, 但是当一个tx_hash中有多个mint或者burn的时候, 会产生冗余记录.
+    因此用对比log.data的方法, 删除重复记录
+
+    重复情况有
+    1: 两个pool.topic. 带有两个proxy.topic, 此时会产生4条记录. 对比data删掉不匹配的2个
+    2: 两个pool.topic, 但是只有一个proxy.topic, 此时不会有多余记录, 但是其中一个proxy.topic是不匹配的. 需要找到不匹配的那个, 然后删除topic字段.
+    """
+    row_to_remove = []
+    df_count = df["key"].value_counts()
+    for index, row in df.iterrows():
+        if row.tx_type == constant.onchainTxType.SWAP:
+            pass
+        elif row.tx_type == constant.onchainTxType.MINT:
+            if data_is_not_empty(row.proxy_data) and row.pool_data[66:] != row.proxy_data[2:]:
+                process_duplicate_row(index, row, row_to_remove, df_count, df)
+        elif row.tx_type == constant.onchainTxType.COLLECT or row.tx_type == constant.onchainTxType.BURN:
+            if data_is_not_empty(row.proxy_data) and row.pool_data != row.proxy_data:
+                process_duplicate_row(index, row, row_to_remove, df_count, df)
+        else:
+            raise ValueError("not support tx type")
+    df.drop(index=row_to_remove, inplace=True)
 
 
 def handle_tick(lower_tick, upper_tick, current_tick, delta):
@@ -117,12 +168,15 @@ def preprocess(pool_address, start_date, end_date, data_file_path):
 
 
 def preprocess_one(df):
+    df["tx_type"] = df.apply(lambda x: get_tx_type(x.pool_topics), axis=1)
+    df["key"] = df.apply(lambda x: x.transaction_hash + str(x.pool_log_index), axis=1)
+    drop_duplicate(df)
     # FIXME BUG: start == end。  merge fail
-    df[["tx_type", "sender", "receipt", "amount0", "amount1",
+    df[["sender", "receipt", "amount0", "amount1",
         "sqrtPriceX96", "current_liquidity", "current_tick", "tick_lower", "tick_upper", "delta_liquidity"]] = df.apply(
-        lambda x: handle_event(x.pool_topics, x.pool_data), axis=1, result_type="expand")
+        lambda x: handle_event(x.tx_type, x.pool_topics, x.pool_data), axis=1, result_type="expand")
     df["position_id"] = df.apply(lambda x: handle_proxy_event(x.proxy_topics), axis=1)
-    df = df.drop(columns=["pool_topics", "pool_data", "proxy_topics"])
+    df = df.drop(columns=["pool_topics", "pool_data", "proxy_topics", "key", "proxy_data"])
     df = df.sort_values(['block_number', 'pool_log_index'], ascending=[True, True])
     df[["sqrtPriceX96", "current_liquidity", "current_tick"]] = df[
         ["sqrtPriceX96", "current_liquidity", "current_tick"]].fillna(method="ffill")
@@ -131,4 +185,5 @@ def preprocess_one(df):
         lambda x: handle_tick(x.tick_lower, x.tick_upper, x.current_tick, x.delta_liquidity), axis=1)
     df["current_liquidity"] = df["current_liquidity"] + df["delta_liquidity"]
     df["block_timestamp"] = df["block_timestamp"].apply(lambda x: x.split("+")[0])
+    df["tx_type"] = df.apply(lambda x: x.tx_type.name, axis=1)
     return df

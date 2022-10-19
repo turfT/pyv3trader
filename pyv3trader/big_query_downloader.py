@@ -23,22 +23,46 @@ def download_bigquery_pool_event_matic_oneday(contract_address, one_date):
     from google.cloud import bigquery
     client = bigquery.Client()
     query = f"""
-select pool.block_number, pool.transaction_hash, pool.block_timestamp, pool.topics as pool_topics, 
-pool.DATA as pool_data,  proxy.topics as proxy_topics,
-pool.transaction_index as pool_tx_index, pool.log_index as pool_log_index from
-(SELECT block_number,transaction_hash,block_timestamp,transaction_index,log_index,topics,DATA FROM
-        public-data-finance.crypto_polygon.logs
-        WHERE topics[SAFE_OFFSET(0)] in ('{constant.MINT_KECCAK}','{constant.BURN_KECCAK}','{constant.SWAP_KECCAK}')
-            AND DATE(block_timestamp) >=  DATE("{one_date}")
-            AND DATE(block_timestamp) <=  DATE("{one_date}")
-            AND address = "{contract_address}" ) as pool
+SELECT block_number, transaction_hash, block_timestamp, transaction_index  as pool_tx_index, log_index pool_log_index, topics as pool_topics, DATA as pool_data, [] as proxy_topics, '' as proxy_data,null as proxy_log_index
+        FROM public-data-finance.crypto_polygon.logs
+        WHERE  topics[SAFE_OFFSET(0)] in ('{constant.SWAP_KECCAK}')
+            AND DATE(block_timestamp) >=  DATE("{one_date}") AND DATE(block_timestamp) <=  DATE("{one_date}") AND address = "{contract_address}"
+
+union all
+
+select pool.block_number, pool.transaction_hash, pool.block_timestamp, pool.transaction_index as pool_tx_index, pool.log_index as pool_log_index,pool.topics as pool_topics, pool.DATA as pool_data,  proxy.topics as proxy_topics, proxy.DATA as proxy_data, proxy.log_index as proxy_log_index from
+(SELECT block_number, transaction_hash, block_timestamp, transaction_index, log_index, topics, DATA FROM public-data-finance.crypto_polygon.logs
+        WHERE topics[SAFE_OFFSET(0)] in ('{constant.MINT_KECCAK}')
+            AND DATE(block_timestamp) >=  DATE("{one_date}") AND DATE(block_timestamp) <=  DATE("{one_date}") AND address = "{contract_address}") as pool
 left join 
-(SELECT transaction_hash,topics FROM public-data-finance.crypto_polygon.logs
-        WHERE topics[SAFE_OFFSET(0)] in ('{constant.INCREASE_LIQUIDITY}','{constant.DECREASE_LIQUIDITY}')
-            AND DATE(block_timestamp) >=  DATE("{one_date}")
-            AND DATE(block_timestamp) <=  DATE("{one_date}")
-            AND address = "{constant.PROXY_CONTRACT_ADDRESS}" ) as proxy
-on pool.transaction_hash=proxy.transaction_hash order by pool.block_number asc
+(SELECT transaction_hash, topics, DATA,log_index FROM public-data-finance.crypto_polygon.logs
+        WHERE topics[SAFE_OFFSET(0)] in ('{constant.INCREASE_LIQUIDITY}')
+            AND DATE(block_timestamp) >=  DATE("{one_date}") AND DATE(block_timestamp) <=  DATE("{one_date}") AND address = "{constant.PROXY_CONTRACT_ADDRESS}") as proxy
+on pool.transaction_hash=proxy.transaction_hash 
+
+union all
+
+select pool.block_number, pool.transaction_hash, pool.block_timestamp, pool.transaction_index as pool_tx_index, pool.log_index as pool_log_index,pool.topics as pool_topics, pool.DATA as pool_data,  proxy.topics as proxy_topics, proxy.DATA as proxy_data, proxy.log_index as proxy_log_index from
+(SELECT block_number, transaction_hash, block_timestamp, transaction_index, log_index, topics, DATA FROM public-data-finance.crypto_polygon.logs
+        WHERE topics[SAFE_OFFSET(0)] in ('{constant.COLLECT_KECCAK}')
+            AND DATE(block_timestamp) >=  DATE("{one_date}") AND DATE(block_timestamp) <=  DATE("{one_date}") AND address = "{contract_address}") as pool
+left join 
+(SELECT transaction_hash, topics, DATA,log_index FROM public-data-finance.crypto_polygon.logs
+        WHERE topics[SAFE_OFFSET(0)] in ('{constant.COLLECT}')
+            AND DATE(block_timestamp) >=  DATE("{one_date}") AND DATE(block_timestamp) <=  DATE("{one_date}") AND address = "{constant.PROXY_CONTRACT_ADDRESS}") as proxy
+on pool.transaction_hash=proxy.transaction_hash 
+
+union all
+
+select pool.block_number, pool.transaction_hash, pool.block_timestamp, pool.transaction_index as pool_tx_index, pool.log_index as pool_log_index,pool.topics as pool_topics, pool.DATA as pool_data,  proxy.topics as proxy_topics, proxy.DATA as proxy_data, proxy.log_index as proxy_log_index from
+(SELECT block_number, transaction_hash, block_timestamp, transaction_index, log_index, topics, DATA FROM public-data-finance.crypto_polygon.logs
+        WHERE topics[SAFE_OFFSET(0)] in ('{constant.BURN_KECCAK}')
+            AND DATE(block_timestamp) >=  DATE("{one_date}") AND DATE(block_timestamp) <=  DATE("{one_date}") AND address = "{contract_address}") as pool
+left join 
+(SELECT transaction_hash, topics, DATA,log_index FROM public-data-finance.crypto_polygon.logs
+        WHERE topics[SAFE_OFFSET(0)] in ('{constant.DECREASE_LIQUIDITY}')
+            AND DATE(block_timestamp) >=  DATE("{one_date}") AND DATE(block_timestamp) <=  DATE("{one_date}") AND address = "{constant.PROXY_CONTRACT_ADDRESS}") as proxy
+on pool.transaction_hash=proxy.transaction_hash     
 """
     query_job = client.query(query)  # Make an API request.
     result = query_job.to_dataframe(create_bqstorage_client=False)

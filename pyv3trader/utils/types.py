@@ -7,55 +7,55 @@ from decimal import Decimal
 
 AddressLike = Union[Address, ChecksumAddress]
 
-
 CurrentState = namedtuple("CurrentState", ["sqrtPriceX96", "tick", "observationIndex",
                                            "observationCardinality", "observationCardinalityNext",
-                                           "feeProtocol", "unlocked","liqulidity"])
+                                           "feeProtocol", "unlocked", "liqulidity"])
+
 
 class onchainTxType(Enum):
     MINT = 0
     SWAP = 2
     BURN = 1
+    COLLECT = 3
 
 
 class ChainEvent(NamedTuple):
-    block_number:int
+    block_number: int
     block_timestamp: datetime.datetime
-    transaction_index : int
-    log_index : int
-    tx_type : onchainTxType
-    amount0 : int
-    amount1 : int
-    current_liquidity : int
-    current_tick : int
+    transaction_index: int
+    log_index: int
+    tx_type: onchainTxType
+    amount0: int
+    amount1: int
+    current_liquidity: int
+    current_tick: int
 
 
 class PoolBaseInfo(NamedTuple):
-    token0:str
+    token0: str
     token1: str
-    pool:str
-    fee : int
-    tickSpacing : int
-    token0_decimal :int
+    pool: str
+    fee: int
+    tickSpacing: int
+    token0_decimal: int
     token1_decimal: int
-    token0_is_usdlike:bool
+    token0_is_usdlike: bool
+
 
 class Position(NamedTuple):
-    lower_tick:int
-    upper_tick:int
-    liquidity:int
-    uncollectedfee_token0:int
+    lower_tick: int
+    upper_tick: int
+    liquidity: int
+    uncollectedfee_token0: int
     uncollectedfee_token1: int
 
 
 class StrategyStatus(NamedTuple):
     timestamp: datetime.datetime
-    usd_in_wallet:float
-    othertoken_in_wallet:float
-    usd_price:float
-    usd_in_pool:float
-    othertoken_in_pool:float
-    uncollected_usd:float
-    uncollected_othertoken:float
-
-
+    usd_in_wallet: float
+    othertoken_in_wallet: float
+    usd_price: float
+    usd_in_pool: float
+    othertoken_in_pool: float
+    uncollected_usd: float
+    uncollected_othertoken: float
