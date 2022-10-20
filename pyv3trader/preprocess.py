@@ -63,7 +63,7 @@ def get_tx_type(topics_str):
     return tx_type
 
 
-def handle_event(tx_type, topics_str, data_hex):
+def handle_event(transaction_hash, tx_type, topics_str, data_hex):
     # proprocess topics string ->topic list
     # topics_str = topics.values[0]
     sqrtPriceX96 = receipt = amount1 = current_liquidity = current_tick = tick_lower = tick_upper = delta_liquidity = None
@@ -87,8 +87,8 @@ def handle_event(tx_type, topics_str, data_hex):
         tick_lower = signed_int(topic_list[2])
         tick_upper = signed_int(topic_list[3])
         split_data = ["0x" + no_0x_data[i:i + chunk_size] for i in range(0, chunks, chunk_size)]
-        delta_liquidity, amount0, amount1 = [signed_int(onedata) for onedata in split_data]
-        delta_liquidity = -delta_liquidity
+        liquidity, amount0, amount1 = [signed_int(onedata) for onedata in split_data]
+        delta_liquidity = -liquidity
 
     elif tx_type == constant.onchainTxType.MINT:
         # sender = topic_str_to_address(topic_list[1])
@@ -97,7 +97,8 @@ def handle_event(tx_type, topics_str, data_hex):
         tick_upper = signed_int(topic_list[3])
         split_data = ["0x" + no_0x_data[i:i + chunk_size] for i in range(0, chunks, chunk_size)]
         sender = hex_to_address(split_data[0])
-        delta_liquidity, amount0, amount1 = [signed_int(onedata) for onedata in split_data[1:]]
+        liquidity, amount0, amount1 = [signed_int(onedata) for onedata in split_data[1:]]
+        delta_liquidity = liquidity
 
     elif tx_type == constant.onchainTxType.COLLECT:
         tick_lower = signed_int(topic_list[2])
@@ -109,7 +110,8 @@ def handle_event(tx_type, topics_str, data_hex):
     else:
         raise ValueError("not support tx type")
 
-    return sender, receipt, amount0, amount1, sqrtPriceX96, current_liquidity, current_tick, tick_lower, tick_upper, delta_liquidity
+    return sender, receipt, amount0, amount1, sqrtPriceX96, current_liquidity, \
+           current_tick, tick_lower, tick_upper, delta_liquidity, delta_liquidity
 
 
 def process_duplicate_row(index, row, row_to_remove, df_count, df):
@@ -173,17 +175,23 @@ def preprocess_one(df):
     drop_duplicate(df)
     # FIXME BUG: start == end。  merge fail
     df[["sender", "receipt", "amount0", "amount1",
-        "sqrtPriceX96", "current_liquidity", "current_tick", "tick_lower", "tick_upper", "delta_liquidity"]] = df.apply(
-        lambda x: handle_event(x.tx_type, x.pool_topics, x.pool_data), axis=1, result_type="expand")
+        "sqrtPriceX96", "total_liquidity", "current_tick", "tick_lower", "tick_upper", "liquidity",
+        "total_liquidity_delta"]] = df.apply(
+        lambda x: handle_event(x.transaction_hash, x.tx_type, x.pool_topics, x.pool_data), axis=1, result_type="expand")
     df["position_id"] = df.apply(lambda x: handle_proxy_event(x.proxy_topics), axis=1)
     df = df.drop(columns=["pool_topics", "pool_data", "proxy_topics", "key", "proxy_data"])
     df = df.sort_values(['block_number', 'pool_log_index'], ascending=[True, True])
-    df[["sqrtPriceX96", "current_liquidity", "current_tick"]] = df[
-        ["sqrtPriceX96", "current_liquidity", "current_tick"]].fillna(method="ffill")
-    df["delta_liquidity"] = df["delta_liquidity"].fillna(0)
-    df["delta_liquidity"] = df.apply(
-        lambda x: handle_tick(x.tick_lower, x.tick_upper, x.current_tick, x.delta_liquidity), axis=1)
-    df["current_liquidity"] = df["current_liquidity"] + df["delta_liquidity"]
+    df[["sqrtPriceX96", "total_liquidity", "current_tick"]] = df[
+        ["sqrtPriceX96", "total_liquidity", "current_tick"]].fillna(method="ffill")
+    df["total_liquidity_delta"] = df["total_liquidity_delta"].fillna(0)
+    df["total_liquidity_delta"] = df.apply(
+        lambda x: handle_tick(x.tick_lower, x.tick_upper, x.current_tick, x.total_liquidity_delta), axis=1)
+    df["total_liquidity"] = df["total_liquidity"] + df["total_liquidity_delta"]
     df["block_timestamp"] = df["block_timestamp"].apply(lambda x: x.split("+")[0])
     df["tx_type"] = df.apply(lambda x: x.tx_type.name, axis=1)
+    order = ["block_number", "block_timestamp", "tx_type", "transaction_hash", "pool_tx_index", "pool_log_index",
+             "proxy_log_index", "sender", "receipt", "amount0", "amount1", "total_liquidity", "total_liquidity_delta",
+             "sqrtPriceX96", "current_tick", "position_id", "tick_lower", "tick_upper", "liquidity"
+             ]
+    df = df[order]
     return df
