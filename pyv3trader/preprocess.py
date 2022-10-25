@@ -1,7 +1,10 @@
 import datetime
 import glob
 import os
+from decimal import Decimal
+
 import pandas as pd
+
 import pyv3trader.utils.consant as constant
 
 
@@ -169,6 +172,10 @@ def preprocess(pool_address, start_date, end_date, data_file_path):
     return preprocess_one(df)
 
 
+def convert_to_decimal(value):
+    return Decimal(value) if value else Decimal(0)
+
+
 def preprocess_one(df):
     df["tx_type"] = df.apply(lambda x: get_tx_type(x.pool_topics), axis=1)
     df["key"] = df.apply(lambda x: x.transaction_hash + str(x.pool_log_index), axis=1)
@@ -178,20 +185,27 @@ def preprocess_one(df):
         "sqrtPriceX96", "total_liquidity", "current_tick", "tick_lower", "tick_upper", "liquidity",
         "total_liquidity_delta"]] = df.apply(
         lambda x: handle_event(x.transaction_hash, x.tx_type, x.pool_topics, x.pool_data), axis=1, result_type="expand")
+    #    block_number, block_timestamp, tx_type, transaction_hash, pool_tx_index, pool_log_index, proxy_log_index, sender, receipt, amount0, amount1, total_liquidity, total_liquidity_delta, sqrtPriceX96, current_tick, position_id, tick_lower, tick_upper, liquidity
     df["position_id"] = df.apply(lambda x: handle_proxy_event(x.proxy_topics), axis=1)
     df = df.drop(columns=["pool_topics", "pool_data", "proxy_topics", "key", "proxy_data"])
     df = df.sort_values(['block_number', 'pool_log_index'], ascending=[True, True])
     df[["sqrtPriceX96", "total_liquidity", "current_tick"]] = df[
         ["sqrtPriceX96", "total_liquidity", "current_tick"]].fillna(method="ffill")
+
     df["total_liquidity_delta"] = df["total_liquidity_delta"].fillna(0)
+    # convert type to keep decimal
+    df["sqrtPriceX96"] = df.apply(lambda x: convert_to_decimal(x.sqrtPriceX96), axis=1)
+    df["total_liquidity_delta"] = df.apply(lambda x: convert_to_decimal(x.total_liquidity_delta), axis=1)
+    df["liquidity"] = df.apply(lambda x: convert_to_decimal(x.liquidity), axis=1)
+    df["total_liquidity"] = df.apply(lambda x: convert_to_decimal(x.total_liquidity), axis=1)
+
     df["total_liquidity_delta"] = df.apply(
         lambda x: handle_tick(x.tick_lower, x.tick_upper, x.current_tick, x.total_liquidity_delta), axis=1)
-    df["total_liquidity"] = df["total_liquidity"] + df["total_liquidity_delta"]
+    df["total_liquidity"] = df.apply(lambda x: x.total_liquidity_delta + x.total_liquidity, axis=1)
     df["block_timestamp"] = df["block_timestamp"].apply(lambda x: x.split("+")[0])
     df["tx_type"] = df.apply(lambda x: x.tx_type.name, axis=1)
     order = ["block_number", "block_timestamp", "tx_type", "transaction_hash", "pool_tx_index", "pool_log_index",
              "proxy_log_index", "sender", "receipt", "amount0", "amount1", "total_liquidity", "total_liquidity_delta",
-             "sqrtPriceX96", "current_tick", "position_id", "tick_lower", "tick_upper", "liquidity"
-             ]
+             "sqrtPriceX96", "current_tick", "position_id", "tick_lower", "tick_upper", "liquidity"]
     df = df[order]
     return df
