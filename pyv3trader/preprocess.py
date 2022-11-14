@@ -112,9 +112,8 @@ def handle_event(transaction_hash, tx_type, topics_str, data_hex):
 
     else:
         raise ValueError("not support tx type")
-
     return sender, receipt, amount0, amount1, sqrtPriceX96, current_liquidity, \
-           current_tick, tick_lower, tick_upper, delta_liquidity, delta_liquidity
+           current_tick, tick_lower, tick_upper, liquidity, delta_liquidity
 
 
 def process_duplicate_row(index, row, row_to_remove, df_count, df):
