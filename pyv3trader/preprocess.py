@@ -69,7 +69,7 @@ def get_tx_type(topics_str):
 def handle_event(transaction_hash, tx_type, topics_str, data_hex):
     # proprocess topics string ->topic list
     # topics_str = topics.values[0]
-    sqrtPriceX96 = receipt = amount1 = current_liquidity = current_tick = tick_lower = tick_upper = delta_liquidity = None
+    liquidity = sqrtPriceX96 = receipt = amount1 = current_liquidity = current_tick = tick_lower = tick_upper = delta_liquidity = None
     topic_list = topics_str.strip("[]").replace("'", "").replace(" ", "").split("\n")
 
     # data_hex = data.values[0]
@@ -113,7 +113,7 @@ def handle_event(transaction_hash, tx_type, topics_str, data_hex):
     else:
         raise ValueError("not support tx type")
     return sender, receipt, amount0, amount1, sqrtPriceX96, current_liquidity, \
-           current_tick, tick_lower, tick_upper, liquidity, delta_liquidity
+        current_tick, tick_lower, tick_upper, liquidity, delta_liquidity
 
 
 def process_duplicate_row(index, row, row_to_remove, df_count, df):
